@@ -161,6 +161,14 @@ label { font-size: 11px; color: var(--suave); }
 .erro { color: var(--x); font-size: 10px; text-align: center; min-height: 1em; margin: 0; line-height: 1.6; }
 .rodape { text-align: center; font-size: 8px; color: var(--suave); opacity: .7; margin: 0; }
 
+.dica { font-family: system-ui, sans-serif; font-size: 12px; color: var(--suave); line-height: 1.5; margin: 0; }
+.perfil { display: flex; flex-direction: column; gap: 12px; text-align: center; }
+.nome-perfil { font-size: 18px; color: var(--verde); margin: 0; word-break: break-all; line-height: 1.4; }
+.menu { display: flex; flex-direction: column; gap: 14px; }
+.menu .btn { text-align: left; }
+.como ol { font-family: system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding-left: 22px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.como b { color: var(--ouro); }
+
 /* ---------- TELÃO ---------- */
 #app-telao { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr minmax(260px, 24vw); gap: 2.2vw; padding: 2.2vw; height: 100vh; overflow: hidden; }
 #app-telao .col { display: flex; flex-direction: column; gap: 1.6vw; min-height: 0; min-width: 0; }
@@ -225,26 +233,77 @@ label { font-size: 11px; color: var(--suave); }
 <main id="app-celular" hidden>
   <h1 class="titulo"><span class="x">PIXEL</span> <span class="o">VELHA</span></h1>
 
-  <section class="tela ativa" id="t-nome">
+  <!-- 0. Carregando (verificando o jogador salvo) -->
+  <section class="tela ativa" id="t-carregando">
+    <div class="caixa" style="display:flex;flex-direction:column;gap:22px;padding:28px 16px">
+      <div class="loading"><i></i><i></i><i></i></div>
+      <p class="aviso">Conectando...</p>
+    </div>
+  </section>
+
+  <!-- 1. Cadastro / entrar -->
+  <section class="tela" id="t-cadastro">
     <div class="logo"><div class="casa" id="logoX"></div><div class="casa" id="logoO"></div></div>
     <p class="sub">Jogo da velha em pixel art.<br>Desafie outra pessoa e<br>suba no ranking!</p>
-    <!-- jogador que já tem nome neste celular -->
-    <div class="caixa" id="boxVolta" style="display:flex;flex-direction:column;gap:14px" hidden>
-      <p class="sub">BEM-VINDO DE VOLTA,</p>
-      <p class="resultado" id="nomeVolta" style="color:var(--verde);font-size:18px;word-break:break-all"></p>
-      <button class="btn" id="bVolta">JOGAR ▶</button>
-      <button class="btn sec" id="bOutro">USAR OUTRO NOME</button>
-      <p class="erro" id="erroVolta"></p>
-    </div>
-    <!-- cadastro de nome novo -->
-    <div class="caixa" id="boxNovo" style="display:flex;flex-direction:column;gap:12px">
+    <div class="caixa" style="display:flex;flex-direction:column;gap:12px">
       <label for="nome">SEU NOME</label>
       <input id="nome" maxlength="14" autocomplete="off" placeholder="ex: Maria">
-      <button class="btn" id="bEntrar">JOGAR ▶</button>
+      <label for="pin">PIN - 4 NUMEROS</label>
+      <input id="pin" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="ex: 1234">
+      <p class="dica">Primeira vez? Invente um PIN.<br>Já jogou? Use o mesmo nome e PIN para voltar ao seu placar.</p>
+      <button class="btn" id="bEntrar">ENTRAR ▶</button>
       <p class="erro" id="erro"></p>
     </div>
   </section>
 
+  <!-- 2. Menu inicial -->
+  <section class="tela" id="t-menu">
+    <div class="caixa perfil">
+      <p class="sub">JOGADOR</p>
+      <p class="nome-perfil" id="mNome"></p>
+      <div class="stats">
+        <div><b id="mV">0</b>VITORIAS</div>
+        <div><b id="mE">0</b>EMPATES</div>
+        <div><b id="mD">0</b>DERROTAS</div>
+      </div>
+      <p class="sub" id="mPos"></p>
+    </div>
+    <nav class="menu">
+      <button class="btn" id="bJogar">▶ JOGAR</button>
+      <button class="btn sec" id="bRanking">★ RANKING</button>
+      <button class="btn sec" id="bComo">? COMO JOGAR</button>
+      <button class="btn sec" id="bSair">⇄ TROCAR JOGADOR</button>
+    </nav>
+    <p class="sub" id="mOnline"></p>
+  </section>
+
+  <!-- 3. Ranking -->
+  <section class="tela" id="t-ranking">
+    <div class="caixa">
+      <h2>★ RANKING</h2>
+      <table class="ranking"><thead><tr><th>#</th><th>JOGADOR</th><th style="text-align:right">V</th><th style="text-align:right">E</th><th style="text-align:right">D</th></tr></thead>
+        <tbody id="rank"><tr><td colspan="5" class="sub">Carregando...</td></tr></tbody></table>
+    </div>
+    <button class="btn sec voltar">◀ MENU</button>
+  </section>
+
+  <!-- 4. Como jogar -->
+  <section class="tela" id="t-como">
+    <div class="caixa como">
+      <h2>? COMO JOGAR</h2>
+      <ol>
+        <li>Toque em <b>JOGAR</b>. Você entra na fila e o jogo encontra um adversário.</li>
+        <li>O símbolo (<span style="color:var(--x)">X</span> ou <span style="color:var(--o)">O</span>) é sorteado. O <span style="color:var(--x)">X</span> começa.</li>
+        <li>Na sua vez, toque numa casa vazia para pintá-la.</li>
+        <li>Quem fizer 3 em linha (reta ou diagonal) vence. Tabuleiro cheio sem vencedor: <b>deu velha</b>.</li>
+        <li>Cada vitória sobe você no ranking do telão.</li>
+        <li>Saiu no meio da partida? Perde por W.O.</li>
+      </ol>
+    </div>
+    <button class="btn sec voltar">◀ MENU</button>
+  </section>
+
+  <!-- 5. Aguardando adversário -->
   <section class="tela" id="t-fila">
     <div class="caixa" style="display:flex;flex-direction:column;gap:22px;padding:28px 16px">
       <div class="loading"><i></i><i></i><i></i></div>
@@ -254,6 +313,7 @@ label { font-size: 11px; color: var(--suave); }
     <button class="btn sec" id="bCancelar">CANCELAR</button>
   </section>
 
+  <!-- 6. Partida -->
   <section class="tela" id="t-jogo">
     <div class="placar">
       <div class="jog" id="jX"><div class="mini" id="miniX"></div><span id="nX"></span></div>
@@ -265,6 +325,7 @@ label { font-size: 11px; color: var(--suave); }
     <button class="btn sec" id="bWO" hidden>ADVERSÁRIO SUMIU? VENCER POR W.O.</button>
   </section>
 
+  <!-- 7. Resultado -->
   <section class="tela" id="t-fim">
     <div class="caixa" style="display:flex;flex-direction:column;gap:18px">
       <p class="resultado" id="resultado"></p>
@@ -276,14 +337,9 @@ label { font-size: 11px; color: var(--suave); }
       </div>
     </div>
     <button class="btn" id="bDeNovo">JOGAR DE NOVO ▶</button>
-    <button class="btn sec" id="bTrocar">TROCAR NOME</button>
+    <button class="btn sec voltar">◀ MENU</button>
   </section>
 
-  <section class="caixa">
-    <h2>★ RANKING</h2>
-    <table class="ranking"><thead><tr><th>#</th><th>JOGADOR</th><th style="text-align:right">VIT</th></tr></thead>
-      <tbody id="rank"><tr><td colspan="3" class="sub">Carregando...</td></tr></tbody></table>
-  </section>
   <p class="rodape">MUNDO SENAI</p>
 </main>
 
@@ -438,35 +494,59 @@ function iniciarCelular(DB) {
   const ESPERA_VALIDADE = 15000; // ms sem sinal = jogador da fila saiu
   const INATIVO = 40000;         // ms sem jogar = pode pedir W.O.
   const pid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  let meuNome = '', estado = 'nome';
+  let meuNome = '', estado = '';
   let partidaId = null, meuSimbolo = null, ultimaPartida = null;
   let pararPartida = null, pararConvite = null, batida = null, vigia = null;
-  let meuRegistro = { v: 0, e: 0, d: 0 };
   let rankingAtual = {};
+  let dadosAntes = { v: 0, e: 0, d: 0 }; // placar no início da partida
 
   desenharSprite($('logoX'), 'X', true); desenharSprite($('logoO'), 'O', true);
   desenharSprite($('miniX'), 'X'); desenharSprite($('miniO'), 'O');
-  // Identidade do aparelho: um código guardado no celular prova que o nome é dele.
-  // Assim ninguém cadastra um nome que já existe, e quem volta recupera o seu.
-  let meuToken = null, nomeSalvo = '';
-  try {
-    meuToken = localStorage.getItem('pv-token');
-    if (!meuToken) { meuToken = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('pv-token', meuToken); }
-    nomeSalvo = localStorage.getItem('pv-nome') || '';
-  } catch (e) { meuToken = meuToken || Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-  function telaNome(modo) { // 'volta' = já tem nome salvo, 'novo' = digitar nome
-    const volta = modo === 'volta' && nomeSalvo;
-    $('boxVolta').hidden = !volta; $('boxNovo').hidden = !!volta;
-    $('nomeVolta').textContent = nomeSalvo;
-    $('erro').textContent = ''; $('erroVolta').textContent = '';
-    mostrar('nome');
+  // ----- memória do aparelho -----
+  // Guarda o jogador no celular (localStorage + cookie de 1 ano).
+  // Se o leitor de QR abrir outro navegador sem essa memória, o jogador
+  // volta digitando o mesmo nome e PIN.
+  const guardar = {
+    ler(k) {
+      try { const v = localStorage.getItem(k); if (v) return v; } catch (e) {}
+      const m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : '';
+    },
+    gravar(k, v) {
+      try { localStorage.setItem(k, v); } catch (e) {}
+      try { document.cookie = k + '=' + encodeURIComponent(v) + ';max-age=31536000;path=/;SameSite=Lax'; } catch (e) {}
+    },
+    apagar(k) {
+      try { localStorage.removeItem(k); } catch (e) {}
+      try { document.cookie = k + '=;max-age=0;path=/'; } catch (e) {}
+    },
+  };
+  let meuToken = guardar.ler('pv-token');
+  if (!meuToken) { meuToken = Math.random().toString(36).slice(2) + Date.now().toString(36); guardar.gravar('pv-token', meuToken); }
+
+  async function hashPin(nome, pin) {
+    const txt = 'pixel-velha|' + chaveNome(nome) + '|' + pin;
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { // navegador sem crypto.subtle
+      let h = 0; for (const ch of txt) h = (h * 31 + ch.charCodeAt(0)) | 0; return 'h' + h;
+    }
   }
 
   // presença (contador "online" do telão)
   DB.set('online/' + pid, true); DB.aoDesconectar('online/' + pid, null);
+  DB.on('online', (o) => {
+    const n = Object.keys(o || {}).length;
+    $('mOnline').textContent = n > 1 ? n + ' JOGADORES ONLINE' : 'SO VOCE ONLINE AGORA';
+  });
 
-  function mostrar(id) { estado = id; document.querySelectorAll('.tela').forEach((t) => t.classList.toggle('ativa', t.id === 't-' + id)); }
+  function mostrar(id) {
+    estado = id;
+    document.querySelectorAll('.tela').forEach((t) => t.classList.toggle('ativa', t.id === 't-' + id));
+    window.scrollTo(0, 0);
+  }
   function vibrar(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
 
   // ----- tabuleiro -----
@@ -479,21 +559,111 @@ function iniciarCelular(DB) {
   }
   let desenhado = '_________';
 
-  // ----- ranking -----
+  // ----- ranking + perfil -----
+  function meusDados() { return rankingAtual[chaveNome(meuNome || '-')] || { v: 0, e: 0, d: 0 }; }
+  function atualizarPerfil() {
+    if (!meuNome) return;
+    const r = meusDados();
+    $('mNome').textContent = meuNome;
+    $('mV').textContent = r.v || 0; $('mE').textContent = r.e || 0; $('mD').textContent = r.d || 0;
+    const lista = ordenarRanking(rankingAtual);
+    const pos = lista.findIndex((x) => chaveNome(x.nome) === chaveNome(meuNome));
+    $('mPos').textContent = pos >= 0 ? 'POSICAO NO RANKING: ' + (pos + 1) + 'º de ' + lista.length : 'Jogue para entrar no ranking!';
+  }
   DB.on('ranking', (obj) => {
     rankingAtual = obj || {};
-    const lista = ordenarRanking(obj).slice(0, 10);
+    atualizarPerfil();
+    const lista = ordenarRanking(obj).slice(0, 20);
     const tb = $('rank');
-    if (!lista.length) { tb.innerHTML = '<tr><td colspan="3" class="sub">Nenhuma partida ainda</td></tr>'; return; }
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="5" class="sub">Nenhuma partida ainda</td></tr>'; return; }
     tb.innerHTML = '';
     lista.forEach((r, i) => {
       const tr = document.createElement('tr');
       tr.className = 'medalha-' + (i + 1) + (meuNome && chaveNome(r.nome) === chaveNome(meuNome) ? ' eu' : '');
-      tr.innerHTML = '<td class="pos">' + (i + 1) + '</td><td></td><td class="n">' + (r.v || 0) + '</td>';
+      tr.innerHTML = '<td class="pos">' + (i + 1) + '</td><td></td><td class="n">' + (r.v || 0) + '</td><td class="n cinza">' + (r.e || 0) + '</td><td class="n cinza">' + (r.d || 0) + '</td>';
       tr.children[1].textContent = r.nome;
       tb.appendChild(tr);
     });
   });
+
+  // ----- cadastro e login -----
+  // Resultado: 'ok' | 'pin' (nome existe e PIN não confere) | 'sem_registro' | 'offline'
+  async function autenticar(nome, pin) {
+    const h = pin ? await hashPin(nome, pin) : null;
+    let motivo = 'ok';
+    try {
+      const r = await DB.tx('usuarios/' + chaveNome(nome), (u) => {
+        motivo = 'ok';
+        if (!u) {
+          if (!h) { motivo = 'sem_registro'; return undefined; }
+          return { nome, pin: h, criado: DB.agora(), tokens: { [meuToken]: true } }; // nome novo
+        }
+        u.tokens = u.tokens || {};
+        if (u.token) { u.tokens[u.token] = true; delete u.token; } // formato antigo
+        if (u.tokens[meuToken]) return u;                          // este aparelho já é do jogador
+        if (h && (!u.pin || u.pin === h)) {                        // mesmo nome + PIN certo: outro aparelho
+          u.pin = u.pin || h; u.tokens[meuToken] = true; return u;
+        }
+        motivo = h ? 'pin' : 'sem_registro';
+        return undefined;
+      });
+      if (r.ok) return { res: 'ok', nome: (r.val && r.val.nome) || nome };
+      return { res: motivo };
+    } catch (e) { return { res: 'offline' }; }
+  }
+
+  function entrouComo(nome) {
+    meuNome = nome;
+    guardar.gravar('pv-nome', nome);
+    atualizarPerfil();
+    mostrar('menu');
+  }
+
+  let entrando = false;
+  async function entrar() {
+    if (entrando) return;
+    const nome = $('nome').value.trim().replace(/[<>]/g, '');
+    const pin = $('pin').value.trim();
+    if (!nome) { $('erro').textContent = 'Digite seu nome!'; return; }
+    if (!/^\d{4}$/.test(pin)) { $('erro').textContent = 'O PIN precisa ter 4 números.'; return; }
+    entrando = true;
+    $('erro').textContent = 'Verificando...';
+    const r = await autenticar(nome, pin);
+    entrando = false;
+    if (r.res === 'ok') { $('erro').textContent = ''; $('pin').value = ''; return entrouComo(r.nome); }
+    if (r.res === 'pin') {
+      $('erro').textContent = 'O nome "' + nome + '" já existe e o PIN não confere. Se não é você, escolha outro nome (ex: ' + nome.slice(0, 11) + Math.floor(Math.random() * 90 + 10) + ').';
+      return;
+    }
+    $('erro').textContent = 'Sem conexão com o servidor. Verifique a internet.';
+  }
+  $('bEntrar').onclick = entrar;
+  $('nome').onkeydown = (e) => { if (e.key === 'Enter') $('pin').focus(); };
+  $('pin').onkeydown = (e) => { if (e.key === 'Enter') entrar(); };
+  $('pin').oninput = () => { $('pin').value = $('pin').value.replace(/\D/g, '').slice(0, 4); };
+
+  // Entrada automática: aparelho já conhecido vai direto para o menu
+  async function entradaAutomatica() {
+    const salvo = guardar.ler('pv-nome');
+    if (!salvo) { mostrar('cadastro'); return; }
+    const r = await autenticar(salvo, null);
+    if (r.res === 'ok') return entrouComo(r.nome);
+    $('nome').value = salvo;
+    mostrar('cadastro');
+    $('erro').textContent = r.res === 'offline' ? 'Sem conexão com o servidor. Verifique a internet.'
+      : 'Digite o PIN de "' + salvo + '" para continuar.';
+  }
+
+  // ----- menu -----
+  $('bJogar').onclick = () => procurar();
+  $('bRanking').onclick = () => mostrar('ranking');
+  $('bComo').onclick = () => mostrar('como');
+  $('bSair').onclick = () => {
+    meuNome = ''; guardar.apagar('pv-nome');
+    $('nome').value = ''; $('pin').value = ''; $('erro').textContent = '';
+    mostrar('cadastro');
+  };
+  document.querySelectorAll('.voltar').forEach((b) => (b.onclick = () => { atualizarPerfil(); mostrar('menu'); }));
 
   // ----- entrar na fila -----
   async function procurar() {
@@ -508,7 +678,6 @@ function iniciarCelular(DB) {
     });
     if (estado !== 'fila') return;
     if (r.ok && adversario) {
-      // eu formo a partida
       const id = DB.novaChave();
       const eu = { pid, nome: meuNome }, ele = { pid: adversario.pid, nome: adversario.nome };
       const [X, O] = Math.random() < 0.5 ? [eu, ele] : [ele, eu];
@@ -530,16 +699,15 @@ function iniciarCelular(DB) {
       entrarPartida(id);
     });
     DB.aoDesconectar('convites/' + pid, null);
-    // "batida de coração" para continuar válido na fila
     batida = setInterval(async () => {
       if (estado !== 'fila') return;
       const r = await DB.tx('espera', (cur) => {
         if (cur && cur.pid === pid) { cur.ts = DB.agora(); return cur; }
-        return undefined; // não é mais meu: não mexe
+        return undefined;
       });
       if (!r.ok) {
         semFila++;
-        if (semFila >= 3 && estado === 'fila') { pararTudoFila(); procurar(); } // fui retirado e o convite não veio
+        if (semFila >= 3 && estado === 'fila') { pararTudoFila(); procurar(); }
       } else semFila = 0;
     }, 4000);
   }
@@ -553,11 +721,13 @@ function iniciarCelular(DB) {
     pararTudoFila();
     await DB.tx('espera', (cur) => (cur && cur.pid === pid ? null : undefined));
   }
+  $('bCancelar').onclick = () => { sairDaFila(); mostrar('menu'); };
 
   // ----- partida -----
   function entrarPartida(id) {
     pararTudoFila();
     partidaId = id; meuSimbolo = null; desenhado = '_________';
+    dadosAntes = { ...meusDados() };
     casas.forEach((c) => { c.innerHTML = ''; c.className = 'casa'; });
     let comecou = false;
     pararPartida = DB.on('partidas/' + id, (p) => {
@@ -569,7 +739,6 @@ function iniciarCelular(DB) {
         $('nX').textContent = p.X.nome; $('nO').textContent = p.O.nome;
         $('nX').style.color = meuSimbolo === 'X' ? 'var(--verde)' : '';
         $('nO').style.color = meuSimbolo === 'O' ? 'var(--verde)' : '';
-        $('aviso').dataset.eu = meuSimbolo;
         DB.aoDesconectar('partidas/' + id + '/saiu/' + meuSimbolo, true);
         mostrar('jogo'); vibrar(80);
       }
@@ -593,15 +762,12 @@ function iniciarCelular(DB) {
     $('aviso').textContent = p.fim ? '' : minha ? 'SUA VEZ! Você é o ' + meuSimbolo : 'Vez do adversário...';
     if (eraMinha) vibrar(30);
     atualizarWO(p);
-
-    // adversário fechou a página -> vitória por W.O.
     if (!p.fim && p.saiu && p.saiu[outro(meuSimbolo)]) encerrarPorWO();
     if (p.fim) mostrarFim(p);
   }
 
   function atualizarWO(p) {
-    const podeWO = !p.fim && p.vez !== meuSimbolo && DB.agora() - (p.ult || 0) > INATIVO;
-    $('bWO').hidden = !podeWO;
+    $('bWO').hidden = !(!p.fim && p.vez !== meuSimbolo && DB.agora() - (p.ult || 0) > INATIVO);
   }
 
   async function jogar(i) {
@@ -647,6 +813,7 @@ function iniciarCelular(DB) {
     const f = p.fim;
     if (f.linha) f.linha.forEach((i) => casas[i].classList.add('ganhou'));
     const ganhei = f.vencedor === meuSimbolo;
+    const antes = dadosAntes;
     vibrar(ganhei ? [60, 60, 120] : 200);
     setTimeout(() => {
       if (partidaId !== id) return;
@@ -654,59 +821,18 @@ function iniciarCelular(DB) {
       $('resultado').textContent = f.vencedor === 'empate' ? 'DEU VELHA!' : ganhei ? 'VOCE VENCEU!' : 'VOCE PERDEU';
       $('resultado').style.color = f.vencedor === 'empate' ? 'var(--suave)' : ganhei ? 'var(--verde)' : 'var(--x)';
       $('motivo').textContent = f.motivo === 'desistencia' ? (ganhei ? 'O adversário saiu da partida.' : 'Você foi desconectado.') : '';
-      // estatísticas (o ranking chega alguns instantes depois)
-      const atual = rankingAtual[chaveNome(meuNome)] || { v: 0, e: 0, d: 0 };
+      // o ranking pode chegar um instante depois: garante que o resultado já aparece somado
+      const atual = meusDados();
       const campo = f.vencedor === 'empate' ? 'e' : ganhei ? 'v' : 'd';
-      const visto = (atual[campo] || 0) > (meuRegistro[campo] || 0) ? atual : { ...atual, [campo]: (atual[campo] || 0) + 1 };
-      meuRegistro = visto;
+      const visto = (atual[campo] || 0) > (antes[campo] || 0) ? atual : { ...atual, [campo]: (atual[campo] || 0) + 1 };
       $('sV').textContent = visto.v || 0; $('sE').textContent = visto.e || 0; $('sD').textContent = visto.d || 0;
       partidaId = null;
       mostrar('fim');
     }, f.motivo === 'desistencia' ? 300 : 1600);
   }
-
-  // ----- botões -----
-  // Reserva o nome para este aparelho. Retorna 'ok', 'ocupado' ou 'offline'.
-  async function reservarNome(n) {
-    try {
-      const r = await DB.tx('usuarios/' + chaveNome(n), (u) => {
-        if (!u) return { nome: n, token: meuToken, criado: DB.agora() }; // nome livre: é meu
-        if (u.token === meuToken) return u;                               // já era meu: volta
-        return undefined;                                                 // de outra pessoa
-      });
-      return r.ok ? 'ok' : 'ocupado';
-    } catch (e) { return 'offline'; }
-  }
-
-  let entrando = false;
-  async function entrar(n, campoErro) {
-    if (entrando) return;
-    n = n.trim().replace(/[<>]/g, '');
-    if (!n) { $(campoErro).textContent = 'Digite seu nome!'; return; }
-    entrando = true;
-    $(campoErro).textContent = 'Verificando nome...';
-    const res = await reservarNome(n);
-    entrando = false;
-    if (res === 'ocupado') {
-      $(campoErro).textContent = 'O nome "' + n + '" já está em uso. Escolha outro (ex: ' + n.slice(0, 11) + Math.floor(Math.random() * 90 + 10) + ').';
-      if (campoErro === 'erroVolta') { telaNome('novo'); $('erro').textContent = 'Seu nome antigo foi usado por outra pessoa. Escolha um novo.'; }
-      return;
-    }
-    if (res === 'offline') { $(campoErro).textContent = 'Sem conexão com o servidor. Verifique a internet.'; return; }
-    meuNome = nomeSalvo = n;
-    try { localStorage.setItem('pv-nome', n); } catch (e) {}
-    $(campoErro).textContent = '';
-    meuRegistro = rankingAtual[chaveNome(n)] || { v: 0, e: 0, d: 0 };
-    procurar().catch(() => { telaNome('volta'); $('erroVolta').textContent = 'Sem conexão com o servidor. Verifique a internet.'; });
-  }
-  $('bEntrar').onclick = () => entrar($('nome').value, 'erro');
-  $('nome').onkeydown = (e) => { if (e.key === 'Enter') entrar($('nome').value, 'erro'); };
-  $('bVolta').onclick = () => entrar(nomeSalvo, 'erroVolta');
-  $('bOutro').onclick = () => { $('nome').value = ''; telaNome('novo'); $('nome').focus(); };
-  $('bCancelar').onclick = () => { sairDaFila(); telaNome('volta'); };
   $('bDeNovo').onclick = () => procurar();
-  $('bTrocar').onclick = () => { $('nome').value = ''; telaNome('novo'); };
-  telaNome('volta');
+
+  entradaAutomatica();
 }
 
 /* =================================================================
