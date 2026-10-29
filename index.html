@@ -168,6 +168,8 @@ label { font-size: 11px; color: var(--suave); }
 .menu .btn { text-align: left; }
 .como ol { font-family: system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding-left: 22px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .como b { color: var(--ouro); }
+.relogio { text-align: center; font-size: 16px; color: var(--suave); margin: 0; font-variant-numeric: tabular-nums; }
+.relogio.urgente { color: var(--x); animation: piscar-txt .5s steps(2) infinite; }
 
 /* ---------- TELÃO ---------- */
 #app-telao { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr minmax(260px, 24vw); gap: 2.2vw; padding: 2.2vw; height: 100vh; overflow: hidden; }
@@ -297,7 +299,8 @@ label { font-size: 11px; color: var(--suave); }
         <li>Na sua vez, toque numa casa vazia para pintá-la.</li>
         <li>Quem fizer 3 em linha (reta ou diagonal) vence. Tabuleiro cheio sem vencedor: <b>deu velha</b>.</li>
         <li>Cada vitória sobe você no ranking do telão.</li>
-        <li>Saiu no meio da partida? Perde por W.O.</li>
+        <li>Cada jogada tem <b>30 segundos</b>. Se o tempo acabar, você perde.</li>
+        <li>Saiu da tela no meio da partida? Volte em até 15 segundos ou perde por W.O.</li>
       </ol>
     </div>
     <button class="btn sec voltar">◀ MENU</button>
@@ -322,7 +325,19 @@ label { font-size: 11px; color: var(--suave); }
     </div>
     <div class="tabuleiro" id="tab"></div>
     <p class="aviso" id="aviso"></p>
-    <button class="btn sec" id="bWO" hidden>ADVERSÁRIO SUMIU? VENCER POR W.O.</button>
+    <p class="relogio" id="relogio"></p>
+    <p class="erro" id="avisoAus" hidden></p>
+  </section>
+
+  <!-- 8. Mesmo jogador aberto em outro lugar -->
+  <section class="tela" id="t-duplicado">
+    <div class="caixa" style="display:flex;flex-direction:column;gap:16px;text-align:center">
+      <h2>JOGADOR JA CONECTADO</h2>
+      <p class="dica" id="dupMsg"></p>
+      <p class="dica">Cada jogador só pode jogar em um lugar por vez.</p>
+    </div>
+    <button class="btn" id="bAqui">JOGAR AQUI</button>
+    <button class="btn sec" id="bDupSair">USAR OUTRO JOGADOR</button>
   </section>
 
   <!-- 7. Resultado -->
@@ -454,6 +469,41 @@ async function registrarResultado(DB, p) {
   }
 }
 
+/* ===================== ÁRBITRO (W.O. e tempo) ===================== */
+// Usado pelos celulares e pelo telão: quem perceber primeiro encerra a partida.
+const TEMPO_JOGADA = window.PV_TEMPO_JOGADA || 30000;  // ms para fazer cada jogada
+const AUSENTE_MAX = window.PV_AUSENTE_MAX || 15000;   // ms fora da página (outro app, aba escondida) antes do W.O.
+function decidirFim(p, agora) {
+  if (!p || p.fim || !p.X || !p.O) return null;
+  const saiu = p.saiu || {}, aus = p.ausente || {};
+  const fora = (s) => !!saiu[s] || (!!aus[s] && agora - aus[s] > AUSENTE_MAX);
+  const fx = fora('X'), fo = fora('O');
+  if (fx && fo) return { vencedor: 'abandono', motivo: 'abandono' };
+  if (fx) return { vencedor: 'O', motivo: 'desistencia' };
+  if (fo) return { vencedor: 'X', motivo: 'desistencia' };
+  if (agora - (p.ult || 0) > TEMPO_JOGADA) return { vencedor: outro(p.vez), motivo: 'tempo' };
+  return null;
+}
+const arbitrando = new Set();
+async function arbitrar(DB, id) {
+  if (!id || arbitrando.has(id)) return;
+  arbitrando.add(id);
+  try { await arbitrar2(DB, id); } finally { arbitrando.delete(id); }
+}
+async function arbitrar2(DB, id) {
+  let decidido = null;
+  const r = await DB.tx('partidas/' + id, (q) => {
+    decidido = null;
+    const d = decidirFim(q, DB.agora());
+    if (!d) return undefined;
+    q.fim = { vencedor: d.vencedor, linha: null, motivo: d.motivo, t: DB.agora() };
+    decidido = d;
+    return q;
+  });
+  if (r.ok && decidido && decidido.vencedor !== 'abandono') await registrarResultado(DB, r.val);
+}
+function segundosRestantes(p, agora) { return Math.max(0, Math.ceil((TEMPO_JOGADA - (agora - (p.ult || 0))) / 1000)); }
+
 /* ===================== INÍCIO ===================== */
 // Aceita tanto FIREBASE_CONFIG quanto o nome "firebaseConfig" que o Firebase usa
 const CFG = (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG) ||
@@ -492,7 +542,7 @@ window.addEventListener('hashchange', () => location.reload());
 function iniciarCelular(DB) {
   $('app-celular').hidden = false;
   const ESPERA_VALIDADE = 15000; // ms sem sinal = jogador da fila saiu
-  const INATIVO = 40000;         // ms sem jogar = pode pedir W.O.
+  const SESSAO_VALIDADE = 20000; // ms sem sinal = a outra aba/celular com o mesmo nome fechou
   const pid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   let meuNome = '', estado = '';
   let partidaId = null, meuSimbolo = null, ultimaPartida = null;
@@ -612,10 +662,57 @@ function iniciarCelular(DB) {
     } catch (e) { return { res: 'offline' }; }
   }
 
-  function entrouComo(nome) {
+  // ----- um jogador = uma aba/celular por vez -----
+  let pararSessao = null, batidaSessao = null, sessaoChave = null;
+  async function assumirSessao(forcar) {
+    const k = 'ativos/' + chaveNome(meuNome);
+    const r = await DB.tx(k, (cur) => {
+      if (!forcar && cur && cur.pid !== pid && DB.agora() - (cur.ts || 0) < SESSAO_VALIDADE) return undefined;
+      return { pid, ts: DB.agora() };
+    });
+    if (!r.ok) return false;
+    soltarSessao(false);
+    sessaoChave = k;
+    DB.aoDesconectar(k, null);
+    pararSessao = DB.on(k, (v) => { if (v && v.pid !== pid && sessaoChave === k) derrubado(); });
+    batidaSessao = setInterval(() => {
+      DB.tx(k, (cur) => (!cur || cur.pid === pid ? { pid, ts: DB.agora() } : undefined));
+    }, 8000);
+    return true;
+  }
+  function soltarSessao(apagar) {
+    const k = sessaoChave;
+    if (pararSessao) { pararSessao(); pararSessao = null; }
+    if (batidaSessao) { clearInterval(batidaSessao); batidaSessao = null; }
+    sessaoChave = null;
+    if (k) {
+      DB.cancelarDesconectar(k);
+      if (apagar) DB.tx(k, (cur) => (cur && cur.pid === pid ? null : undefined));
+    }
+  }
+  // Outra aba/celular entrou com o mesmo jogador: esta para de jogar
+  function derrubado() {
+    soltarSessao(false);
+    if (estado === 'fila') sairDaFila();
+    if (partidaId && meuSimbolo && ultimaPartida && !ultimaPartida.fim) DB.set('partidas/' + partidaId + '/saiu/' + meuSimbolo, true);
+    if (pararPartida) { pararPartida(); pararPartida = null; }
+    clearInterval(vigia); partidaId = null;
+    $('dupMsg').textContent = meuNome + ' abriu o jogo em outra aba ou celular.';
+    mostrar('duplicado');
+  }
+  $('bAqui').onclick = async () => { if (await assumirSessao(true)) { atualizarPerfil(); mostrar('menu'); } };
+  $('bDupSair').onclick = () => $('bSair').onclick();
+
+  async function entrouComo(nome) {
     meuNome = nome;
     guardar.gravar('pv-nome', nome);
     atualizarPerfil();
+    let ok = false;
+    try { ok = await assumirSessao(false); } catch (e) {}
+    if (!ok) {
+      $('dupMsg').textContent = nome + ' já está jogando em outra aba ou celular.';
+      return mostrar('duplicado');
+    }
     mostrar('menu');
   }
 
@@ -659,6 +756,7 @@ function iniciarCelular(DB) {
   $('bRanking').onclick = () => mostrar('ranking');
   $('bComo').onclick = () => mostrar('como');
   $('bSair').onclick = () => {
+    soltarSessao(true);
     meuNome = ''; guardar.apagar('pv-nome');
     $('nome').value = ''; $('pin').value = ''; $('erro').textContent = '';
     mostrar('cadastro');
@@ -671,7 +769,8 @@ function iniciarCelular(DB) {
     let adversario = null;
     const r = await DB.tx('espera', (cur) => {
       adversario = null;
-      if (cur && cur.pid !== pid && DB.agora() - (cur.ts || 0) < ESPERA_VALIDADE) {
+      if (cur && cur.pid !== pid && DB.agora() - (cur.ts || 0) < ESPERA_VALIDADE &&
+          chaveNome(cur.nome || '') !== chaveNome(meuNome)) { // nunca joga contra si mesmo
         adversario = cur; return null; // pega quem estava esperando
       }
       return { pid, nome: meuNome, ts: DB.agora() };
@@ -745,8 +844,35 @@ function iniciarCelular(DB) {
       atualizarPartida(p);
     });
     clearInterval(vigia);
-    vigia = setInterval(() => ultimaPartida && estado === 'jogo' && atualizarWO(ultimaPartida), 2000);
+    vigia = setInterval(() => { if (ultimaPartida && estado === 'jogo') vigiar(ultimaPartida); }, 1000);
   }
+
+  // relógio da jogada + árbitro (tempo esgotado, adversário saiu ou sumiu)
+  function vigiar(p) {
+    if (p.fim) return;
+    const seg = segundosRestantes(p, DB.agora());
+    const minha = p.vez === meuSimbolo;
+    $('relogio').textContent = '⏱ ' + seg + 's';
+    $('relogio').classList.toggle('urgente', seg <= 10);
+    const aus = p.ausente && p.ausente[outro(meuSimbolo)];
+    $('avisoAus').hidden = !aus;
+    if (aus) $('avisoAus').textContent = 'O adversário saiu da tela. W.O. em ' + Math.max(0, Math.ceil((AUSENTE_MAX - (DB.agora() - aus)) / 1000)) + 's';
+    if (minha && seg <= 10 && seg > 0 && seg % 5 === 0) vibrar(40);
+    if (decidirFim(p, DB.agora())) arbitrar(DB, partidaId);
+  }
+
+  // saiu do app/aba durante a partida: avisa o banco (o adversário ganha por W.O. se não voltar)
+  document.addEventListener('visibilitychange', () => {
+    if (!partidaId || !meuSimbolo || !ultimaPartida || ultimaPartida.fim) return;
+    const k = 'partidas/' + partidaId + '/ausente/' + meuSimbolo;
+    if (document.hidden) DB.set(k, DB.agora()); else DB.remove(k);
+  });
+  // fechou a página ou navegou para outro site: sai na hora
+  window.addEventListener('pagehide', () => {
+    if (partidaId && meuSimbolo && ultimaPartida && !ultimaPartida.fim) DB.set('partidas/' + partidaId + '/saiu/' + meuSimbolo, true);
+    if (estado === 'fila') sairDaFila();
+    soltarSessao(true);
+  });
 
   function atualizarPartida(p) {
     for (let i = 0; i < 9; i++) {
@@ -761,13 +887,8 @@ function iniciarCelular(DB) {
     $('aviso').className = 'aviso' + (minha ? ' minha' : '');
     $('aviso').textContent = p.fim ? '' : minha ? 'SUA VEZ! Você é o ' + meuSimbolo : 'Vez do adversário...';
     if (eraMinha) vibrar(30);
-    atualizarWO(p);
-    if (!p.fim && p.saiu && p.saiu[outro(meuSimbolo)]) encerrarPorWO();
+    vigiar(p);
     if (p.fim) mostrarFim(p);
-  }
-
-  function atualizarWO(p) {
-    $('bWO').hidden = !(!p.fim && p.vez !== meuSimbolo && DB.agora() - (p.ult || 0) > INATIVO);
   }
 
   async function jogar(i) {
@@ -787,22 +908,6 @@ function iniciarCelular(DB) {
     if (r.ok && fimMeu) registrarResultado(DB, r.val);
   }
 
-  let encerrandoWO = false;
-  async function encerrarPorWO() {
-    if (encerrandoWO) return; encerrandoWO = true;
-    let fimMeu = false;
-    const r = await DB.tx('partidas/' + partidaId, (q) => {
-      fimMeu = false;
-      if (!q || q.fim) return undefined;
-      q.fim = { vencedor: meuSimbolo, linha: null, motivo: 'desistencia', t: DB.agora() };
-      fimMeu = true;
-      return q;
-    });
-    if (r.ok && fimMeu) registrarResultado(DB, r.val);
-    encerrandoWO = false;
-  }
-  $('bWO').onclick = encerrarPorWO;
-
   let fimMostrado = null;
   function mostrarFim(p) {
     if (fimMostrado === partidaId) return;
@@ -820,7 +925,8 @@ function iniciarCelular(DB) {
       if (pararPartida) { pararPartida(); pararPartida = null; }
       $('resultado').textContent = f.vencedor === 'empate' ? 'DEU VELHA!' : ganhei ? 'VOCE VENCEU!' : 'VOCE PERDEU';
       $('resultado').style.color = f.vencedor === 'empate' ? 'var(--suave)' : ganhei ? 'var(--verde)' : 'var(--x)';
-      $('motivo').textContent = f.motivo === 'desistencia' ? (ganhei ? 'O adversário saiu da partida.' : 'Você foi desconectado.') : '';
+      $('motivo').textContent = f.motivo === 'desistencia' ? (ganhei ? 'O adversário saiu da partida (W.O.).' : 'Você saiu da partida (W.O.).')
+        : f.motivo === 'tempo' ? (ganhei ? 'O tempo do adversário acabou.' : 'Seu tempo acabou.') : '';
       // o ranking pode chegar um instante depois: garante que o resultado já aparece somado
       const atual = meusDados();
       const campo = f.vencedor === 'empate' ? 'e' : ganhei ? 'v' : 'd';
@@ -828,7 +934,7 @@ function iniciarCelular(DB) {
       $('sV').textContent = visto.v || 0; $('sE').textContent = visto.e || 0; $('sD').textContent = visto.d || 0;
       partidaId = null;
       mostrar('fim');
-    }, f.motivo === 'desistencia' ? 300 : 1600);
+    }, f.linha ? 1600 : 400);
   }
   $('bDeNovo').onclick = () => procurar();
 
@@ -852,7 +958,12 @@ function iniciarTelao(DB) {
   const cache = new Map();
   let partidas = {};
   DB.on('partidas', (obj) => { partidas = obj || {}; renderPartidas(); });
-  setInterval(renderPartidas, 2000);
+  setInterval(renderPartidas, 1000);
+  // o telão também é árbitro: encerra partidas abandonadas ou com tempo esgotado
+  setInterval(() => {
+    const agora = DB.agora();
+    Object.entries(partidas).forEach(([id, p]) => { if (decidirFim(p, agora)) arbitrar(DB, id); });
+  }, 2000);
 
   function criarCard(p) {
     const el = document.createElement('div');
@@ -868,10 +979,10 @@ function iniciarTelao(DB) {
   function renderPartidas() {
     const agora = DB.agora();
     const lista = Object.entries(partidas)
-      .filter(([, p]) => p && p.X && p.O && (!p.fim || agora - (p.fim.t || 0) < 8000) && agora - (p.ult || 0) < 5 * 60000)
+      .filter(([, p]) => p && p.X && p.O && (!p.fim || agora - (p.fim.t || 0) < 8000) && agora - (p.ult || 0) < 2 * 60000)
       .sort((a, b) => (b[1].criada || 0) - (a[1].criada || 0))
       .slice(0, 4);
-    $('cJog').textContent = Object.values(partidas).filter((p) => p && !p.fim && agora - (p.ult || 0) < 5 * 60000).length * 2;
+    $('cJog').textContent = Object.values(partidas).filter((p) => p && !p.fim && agora - (p.ult || 0) < 2 * 60000).length * 2;
 
     const box = $('partidas');
     const ids = new Set(lista.map(([id]) => id));
@@ -907,8 +1018,9 @@ function iniciarTelao(DB) {
       if (p.fim) {
         if (p.fim.linha) p.fim.linha.forEach((i) => c.casas[i].classList.add('ganhou'));
         st.textContent = p.fim.vencedor === 'empate' ? 'DEU VELHA!'
-          : '★ ' + p[p.fim.vencedor].nome + ' VENCEU' + (p.fim.motivo === 'desistencia' ? ' (W.O.)' : '');
-      } else st.textContent = '';
+          : p.fim.vencedor === 'abandono' ? 'PARTIDA ABANDONADA'
+          : '★ ' + p[p.fim.vencedor].nome + ' VENCEU' + (p.fim.motivo === 'desistencia' ? ' (W.O.)' : p.fim.motivo === 'tempo' ? ' (TEMPO)' : '');
+      } else st.textContent = '⏱ ' + segundosRestantes(p, agora) + 's';
     });
   }
 
