@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1a1033">
+<title>Pixel Velha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<script>
+/* Se algo der errado, mostra o erro na tela em vez de deixar a página vazia */
+window.PV_ERROS = [];
+window.mostrarErroPV = function (titulo, detalhe) {
+  window.PV_ERROS.push(titulo);
+  var pintar = function () {
+    var box = document.getElementById('pv-erro');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'pv-erro';
+      box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#fff3f5;color:#5a0012;border:4px solid #ff4d6d;padding:14px;font:14px/1.5 system-ui,sans-serif;max-height:60vh;overflow:auto';
+      document.body.appendChild(box);
+    }
+    var p = document.createElement('div');
+    p.style.marginBottom = '8px';
+    p.innerHTML = '<b></b><br><code style="font-size:12px;white-space:pre-wrap"></code>';
+    p.querySelector('b').textContent = '⚠ ' + titulo;
+    p.querySelector('code').textContent = detalhe || '';
+    box.appendChild(p);
+  };
+  if (document.body) pintar(); else document.addEventListener('DOMContentLoaded', pintar);
+};
+window.addEventListener('error', function (e) {
+  if (e.target && e.target.tagName === 'SCRIPT') {
+    mostrarErroPV('Não foi possível carregar: ' + e.target.src, 'Verifique a internet do aparelho.');
+  } else if (e.message) {
+    mostrarErroPV('Erro no código (linha ' + e.lineno + ')', e.message +
+      (e.lineno < 60 ? '\nProvavelmente a configuração do Firebase foi colada no formato errado. Veja o LEIA-ME.' : ''));
+  }
+}, true);
+</script>
+<script>
+/* =================================================================
+   PIXEL VELHA - Jogo da velha multiplayer em pixel art (Mundo SENAI)
+   Arquivo único: index.html
+   - Celular:  https://seu-site/            (jogadores)
+   - Telão:    https://seu-site/#telao      (projetor, com QR code)
+
+   PASSO OBRIGATÓRIO: cole abaixo a configuração do seu projeto
+   Firebase (veja o LEIA-ME.md). Sem isso o jogo mostra as instruções.
+   ================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDDHE1jMHl0LBX_z6U0iLhk_DX6XVDRHzI",
+  authDomain: "pixel-velha-senai2026.firebaseapp.com",
+  databaseURL: "https://pixel-velha-senai2026-default-rtdb.firebaseio.com",
+  projectId: "pixel-velha-senai2026",
+  storageBucket: "pixel-velha-senai2026.firebasestorage.app",
+  messagingSenderId: "133251784898",
+  appId: "1:133251784898:web:cd966053f03f4f22759b5b"
+};
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --fundo: #1a1033; --fundo2: #2a1b52; --borda: #0d0820;
+  --texto: #f4f0ff; --suave: #a99bd6;
+  --x: #ff4d6d; --o: #3ddcff; --ouro: #ffd23f; --verde: #5df58b;
+  --pixel: 'Press Start 2P', ui-monospace, 'Courier New', monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: var(--fundo);
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 16px 16px;
+  color: var(--texto); font-family: var(--pixel);
+  -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+.titulo { font-size: 22px; line-height: 1.4; text-align: center; margin: 0; letter-spacing: 1px; font-weight: normal; }
+.titulo .x { color: var(--x); } .titulo .o { color: var(--o); }
+.caixa {
+  background: var(--fundo2); border: 4px solid var(--borda); padding: 16px;
+  box-shadow: inset -4px -4px 0 rgba(0,0,0,.35), inset 4px 4px 0 rgba(255,255,255,.08), 6px 6px 0 var(--borda);
+}
+.btn {
+  font: inherit; font-size: 14px; color: var(--borda); background: var(--ouro);
+  border: 4px solid var(--borda); padding: 14px 18px; cursor: pointer; width: 100%;
+  box-shadow: inset -4px -4px 0 rgba(0,0,0,.25), 4px 4px 0 var(--borda);
+}
+.btn:active { transform: translate(4px, 4px); box-shadow: inset -4px -4px 0 rgba(0,0,0,.25); }
+.btn.sec { background: var(--suave); }
+.btn.perigo { background: var(--x); }
+.btn:focus-visible, input:focus-visible { outline: 3px solid var(--verde); outline-offset: 2px; }
+input {
+  font: inherit; font-size: 14px; width: 100%; padding: 14px 12px;
+  background: var(--borda); color: var(--texto); border: 4px solid var(--suave); outline: none; border-radius: 0;
+}
+input:focus { border-color: var(--ouro); }
+
+.tabuleiro {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; aspect-ratio: 1; max-width: 100%;
+  background: var(--borda); padding: 8px; border: 4px solid var(--borda); box-shadow: 6px 6px 0 rgba(0,0,0,.4);
+}
+.casa {
+  background: var(--fundo2); aspect-ratio: 1; display: grid; place-items: center; padding: 12%; min-width: 0;
+  box-shadow: inset -4px -4px 0 rgba(0,0,0,.3), inset 4px 4px 0 rgba(255,255,255,.06);
+}
+.casa.livre { cursor: pointer; }
+.casa.livre:hover, .casa.livre:active { background: #3a2870; }
+.casa.ganhou { background: #4a3a10; animation: piscar .5s steps(2) infinite; }
+@keyframes piscar { 50% { background: var(--fundo2); } }
+.sprite { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; aspect-ratio: 1; }
+.sprite i { display: block; aspect-ratio: 1; }
+.sprite i.on { animation: pinta .12s steps(1) both; }
+.sprite-X i.on { background: var(--x); box-shadow: inset -2px -2px 0 rgba(0,0,0,.25); }
+.sprite-O i.on { background: var(--o); box-shadow: inset -2px -2px 0 rgba(0,0,0,.25); }
+@keyframes pinta { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: scale(1); } }
+
+.ranking { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ranking th { color: var(--suave); text-align: left; padding: 6px 4px; font-weight: normal; }
+.ranking td { padding: 8px 4px; border-top: 2px dashed rgba(255,255,255,.08); }
+.ranking td:nth-child(2) { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking .n { text-align: right; color: var(--ouro); padding-left: 1em; }
+.ranking .n.cinza { color: var(--suave); }
+.ranking tr.eu td { color: var(--verde); }
+.pos { color: var(--suave); width: 2.5em; }
+.medalha-1 .pos { color: var(--ouro); } .medalha-2 .pos { color: #d7d7e8; } .medalha-3 .pos { color: #e09a5a; }
+.sub { font-size: 10px; color: var(--suave); text-align: center; line-height: 1.8; margin: 0; }
+h2 { font-size: 12px; margin: 0 0 10px; color: var(--ouro); font-weight: normal; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+
+/* ---------- CELULAR ---------- */
+#app-celular { max-width: 440px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 18px; }
+.tela { display: none; flex-direction: column; gap: 16px; }
+.tela.ativa { display: flex; }
+label { font-size: 11px; color: var(--suave); }
+.placar { display: flex; justify-content: space-between; align-items: center; font-size: 11px; gap: 8px; }
+.placar .jog { display: flex; align-items: center; gap: 8px; padding: 8px; border: 4px solid transparent; flex: 1; min-width: 0; }
+.placar .jog span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.placar .jog.vez { border-color: var(--ouro); background: rgba(255,210,63,.08); }
+.placar .jog:last-child { justify-content: flex-end; }
+.mini { width: 22px; flex: none; }
+.vs { color: var(--suave); }
+.aviso { text-align: center; font-size: 13px; line-height: 1.6; min-height: 2.6em; margin: 0; }
+.aviso.minha { color: var(--ouro); animation: piscar-txt 1s steps(2) infinite; }
+@keyframes piscar-txt { 50% { opacity: .55; } }
+.resultado { font-size: 22px; text-align: center; margin: 0; line-height: 1.5; }
+.stats { display: flex; justify-content: space-around; text-align: center; font-size: 10px; color: var(--suave); }
+.stats b { display: block; font-size: 18px; color: var(--texto); margin-bottom: 6px; font-weight: normal; }
+.loading { display: flex; justify-content: center; gap: 8px; }
+.loading i { width: 14px; height: 14px; background: var(--ouro); animation: pulo .9s steps(3) infinite; }
+.loading i:nth-child(2) { animation-delay: .15s; background: var(--x); }
+.loading i:nth-child(3) { animation-delay: .3s; background: var(--o); }
+@keyframes pulo { 50% { transform: translateY(-12px); } }
+.logo { display: flex; justify-content: center; gap: 12px; }
+.logo .casa { width: 64px; padding: 10px; }
+.erro { color: var(--x); font-size: 10px; text-align: center; min-height: 1em; margin: 0; line-height: 1.6; }
+.rodape { text-align: center; font-size: 8px; color: var(--suave); opacity: .7; margin: 0; }
+
+/* ---------- TELÃO ---------- */
+#app-telao { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr minmax(260px, 24vw); gap: 2.2vw; padding: 2.2vw; height: 100vh; overflow: hidden; }
+#app-telao .col { display: flex; flex-direction: column; gap: 1.6vw; min-height: 0; min-width: 0; }
+#app-telao .titulo { font-size: clamp(22px, 2.6vw, 48px); }
+.qr { background: #fff; padding: 12px; border: 4px solid var(--borda); box-shadow: 6px 6px 0 var(--borda); }
+.qr img, .qr canvas { width: 100% !important; height: auto !important; display: block; image-rendering: pixelated; }
+.chamada { font-size: clamp(12px, 1.1vw, 20px); text-align: center; line-height: 1.7; color: var(--ouro); margin: 0; animation: piscar-txt 1.2s steps(2) infinite; }
+.url { font-size: clamp(8px, .7vw, 12px); text-align: center; color: var(--suave); word-break: break-all; margin: 0; line-height: 1.6; }
+.contadores { display: flex; gap: 1vw; }
+.contadores .caixa { flex: 1; text-align: center; font-size: clamp(8px, .7vw, 12px); color: var(--suave); padding: 12px 6px; min-width: 0; }
+.contadores b { display: block; font-size: clamp(18px, 2vw, 36px); color: var(--texto); margin-bottom: 8px; font-weight: normal; }
+#app-telao h2 { font-size: clamp(12px, 1.1vw, 20px); margin: 0; }
+.partidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6vw; align-content: start; }
+.partida { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; }
+.partida .nomes { display: flex; justify-content: space-between; font-size: clamp(8px, .7vw, 12px); gap: 6px; }
+.partida .nomes span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48%; padding: 4px; border: 3px solid transparent; }
+.partida .nomes .nx { color: var(--x); } .partida .nomes .no { color: var(--o); }
+.partida .nomes .vez { border-color: var(--ouro); }
+.partida .tabuleiro { width: min(100%, calc(50vh - 150px)); align-self: center; gap: 5px; padding: 5px; }
+.partida .casa { padding: 14%; }
+.partida .status { font-size: clamp(8px, .7vw, 12px); text-align: center; color: var(--verde); min-height: 1.2em; }
+.vazio { grid-column: 1 / -1; text-align: center; color: var(--suave); font-size: clamp(10px, 1vw, 16px); line-height: 2; padding: 6vh 0; }
+.vazio .tabuleiro { width: min(240px, 40%); margin: 0 auto 24px; }
+#app-telao .ranking { font-size: clamp(10px, .95vw, 18px); }
+#app-telao .ranking td { padding: 1.1vh 4px; }
+.rk { flex: 1; overflow: hidden; }
+.linha-nova td { animation: destaque 1.5s steps(3); }
+@keyframes destaque { 0%, 66% { background: rgba(255,210,63,.25); } }
+.zerar { background: none; border: 0; color: var(--suave); opacity: .35; font: inherit; font-size: 8px; cursor: pointer; padding: 4px; align-self: flex-end; }
+.zerar:hover { opacity: 1; }
+#confirmaZerar { display: flex; gap: 8px; }
+#confirmaZerar .btn { font-size: 9px; padding: 8px; }
+@media (max-width: 900px) {
+  #app-telao { grid-template-columns: 1fr; height: auto; overflow: visible; padding: 16px; gap: 20px; }
+  .partida .tabuleiro { width: 100%; }
+}
+
+/* ---------- CONFIGURAÇÃO ---------- */
+#app-config { max-width: 640px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 18px; }
+#app-config ol { font-family: system-ui, sans-serif; font-size: 15px; line-height: 1.7; padding-left: 22px; margin: 0; }
+#app-config code { background: var(--borda); padding: 2px 6px; color: var(--ouro); }
+</style>
+</head>
+<body>
+
+<!-- ===================== CONFIGURAÇÃO PENDENTE ===================== -->
+<div id="app-config" hidden>
+  <h1 class="titulo"><span class="x">PIXEL</span> <span class="o">VELHA</span></h1>
+  <div class="caixa">
+    <h2>FALTA CONFIGURAR O FIREBASE</h2>
+    <ol>
+      <li>Acesse <code>console.firebase.google.com</code> e crie um projeto (grátis).</li>
+      <li>Em <b>Realtime Database</b>, clique em <b>Criar banco de dados</b> e escolha <b>modo de teste</b>.</li>
+      <li>Em <b>Configurações do projeto → Seus apps</b>, adicione um app <b>Web (&lt;/&gt;)</b> e copie o <code>firebaseConfig</code>.</li>
+      <li>Abra este <code>index.html</code> num editor e cole no lugar de <code>FIREBASE_CONFIG</code>, no topo do arquivo.</li>
+    </ol>
+  </div>
+  <p class="sub">Instruções completas no arquivo LEIA-ME.md</p>
+</div>
+
+<!-- ===================== CELULAR ===================== -->
+<main id="app-celular" hidden>
+  <h1 class="titulo"><span class="x">PIXEL</span> <span class="o">VELHA</span></h1>
+
+  <section class="tela ativa" id="t-nome">
+    <div class="logo"><div class="casa" id="logoX"></div><div class="casa" id="logoO"></div></div>
+    <p class="sub">Jogo da velha em pixel art.<br>Desafie outra pessoa e<br>suba no ranking!</p>
+    <!-- jogador que já tem nome neste celular -->
+    <div class="caixa" id="boxVolta" style="display:flex;flex-direction:column;gap:14px" hidden>
+      <p class="sub">BEM-VINDO DE VOLTA,</p>
+      <p class="resultado" id="nomeVolta" style="color:var(--verde);font-size:18px;word-break:break-all"></p>
+      <button class="btn" id="bVolta">JOGAR ▶</button>
+      <button class="btn sec" id="bOutro">USAR OUTRO NOME</button>
+      <p class="erro" id="erroVolta"></p>
+    </div>
+    <!-- cadastro de nome novo -->
+    <div class="caixa" id="boxNovo" style="display:flex;flex-direction:column;gap:12px">
+      <label for="nome">SEU NOME</label>
+      <input id="nome" maxlength="14" autocomplete="off" placeholder="ex: Maria">
+      <button class="btn" id="bEntrar">JOGAR ▶</button>
+      <p class="erro" id="erro"></p>
+    </div>
+  </section>
+
+  <section class="tela" id="t-fila">
+    <div class="caixa" style="display:flex;flex-direction:column;gap:22px;padding:28px 16px">
+      <div class="loading"><i></i><i></i><i></i></div>
+      <p class="aviso">Procurando<br>adversário...</p>
+      <p class="sub">Peça para um amigo<br>escanear o QR code!</p>
+    </div>
+    <button class="btn sec" id="bCancelar">CANCELAR</button>
+  </section>
+
+  <section class="tela" id="t-jogo">
+    <div class="placar">
+      <div class="jog" id="jX"><div class="mini" id="miniX"></div><span id="nX"></span></div>
+      <span class="vs">VS</span>
+      <div class="jog" id="jO"><span id="nO"></span><div class="mini" id="miniO"></div></div>
+    </div>
+    <div class="tabuleiro" id="tab"></div>
+    <p class="aviso" id="aviso"></p>
+    <button class="btn sec" id="bWO" hidden>ADVERSÁRIO SUMIU? VENCER POR W.O.</button>
+  </section>
+
+  <section class="tela" id="t-fim">
+    <div class="caixa" style="display:flex;flex-direction:column;gap:18px">
+      <p class="resultado" id="resultado"></p>
+      <p class="sub" id="motivo"></p>
+      <div class="stats">
+        <div><b id="sV">0</b>VITORIAS</div>
+        <div><b id="sE">0</b>EMPATES</div>
+        <div><b id="sD">0</b>DERROTAS</div>
+      </div>
+    </div>
+    <button class="btn" id="bDeNovo">JOGAR DE NOVO ▶</button>
+    <button class="btn sec" id="bTrocar">TROCAR NOME</button>
+  </section>
+
+  <section class="caixa">
+    <h2>★ RANKING</h2>
+    <table class="ranking"><thead><tr><th>#</th><th>JOGADOR</th><th style="text-align:right">VIT</th></tr></thead>
+      <tbody id="rank"><tr><td colspan="3" class="sub">Carregando...</td></tr></tbody></table>
+  </section>
+  <p class="rodape">MUNDO SENAI</p>
+</main>
+
+<!-- ===================== TELÃO ===================== -->
+<div id="app-telao" hidden>
+  <div class="col">
+    <h1 class="titulo"><span class="x">PIXEL</span><br><span class="o">VELHA</span></h1>
+    <div class="qr"><div id="qr"></div></div>
+    <p class="chamada">APONTE A CAMERA<br>E JOGUE!</p>
+    <p class="url" id="url"></p>
+    <div class="contadores">
+      <div class="caixa"><b id="cOn">0</b>ONLINE</div>
+      <div class="caixa"><b id="cJog">0</b>JOGANDO</div>
+    </div>
+  </div>
+  <div class="col">
+    <h2>● PARTIDAS AO VIVO</h2>
+    <div class="partidas" id="partidas"></div>
+  </div>
+  <div class="col">
+    <div class="caixa rk">
+      <h2 style="margin-bottom:14px">★ RANKING</h2>
+      <table class="ranking">
+        <thead><tr><th>#</th><th>JOGADOR</th><th style="text-align:right">V</th><th style="text-align:right">E</th><th style="text-align:right">D</th></tr></thead>
+        <tbody id="rankT"></tbody>
+      </table>
+    </div>
+    <button class="zerar" id="bZerar">zerar ranking</button>
+    <div id="confirmaZerar" hidden>
+      <button class="btn perigo" id="bZerarSim">APAGAR TUDO</button>
+      <button class="btn sec" id="bZerarNao">CANCELAR</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== DESENHOS EM PIXEL (8x8) ===================== */
+const SPRITES = {
+  X: ['XX....XX','XXX..XXX','.XXXXXX.','..XXXX..','..XXXX..','.XXXXXX.','XXX..XXX','XX....XX'],
+  O: ['..XXXX..','.XXXXXX.','XXX..XXX','XX....XX','XX....XX','XXX..XXX','.XXXXXX.','..XXXX..'],
+};
+function desenharSprite(casa, simbolo, animar) {
+  casa.innerHTML = '';
+  if (!simbolo || !SPRITES[simbolo]) return;
+  const grade = document.createElement('div');
+  grade.className = 'sprite sprite-' + simbolo;
+  let ordem = 0;
+  SPRITES[simbolo].join('').split('').forEach((ch) => {
+    const px = document.createElement('i');
+    if (ch === 'X') {
+      px.className = 'on';
+      px.style.animationDelay = animar ? (ordem++ * 14) + 'ms' : '';
+      if (!animar) px.style.animation = 'none';
+    }
+    grade.appendChild(px);
+  });
+  casa.appendChild(grade);
+}
+
+/* ===================== REGRAS DO JOGO ===================== */
+const LINHAS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+function verificar(tab) { // tab = string de 9 letras: X, O ou _
+  for (const [a, b, c] of LINHAS) {
+    if (tab[a] !== '_' && tab[a] === tab[b] && tab[a] === tab[c]) return { vencedor: tab[a], linha: [a, b, c] };
+  }
+  if (!tab.includes('_')) return { vencedor: 'empate', linha: null };
+  return null;
+}
+const outro = (s) => (s === 'X' ? 'O' : 'X');
+const chaveNome = (n) => n.trim().toLowerCase().replace(/[.#$\[\]\/]/g, '_') || '_';
+const $ = (id) => document.getElementById(id);
+
+/* ===================== BANCO DE DADOS (Firebase) ===================== */
+function criarDB() {
+  if (window.PV_DB_FACTORY) return window.PV_DB_FACTORY(); // usado só em testes
+  firebase.initializeApp(CFG);
+  const db = firebase.database();
+  let offset = 0;
+  db.ref('.info/serverTimeOffset').on('value', (s) => { offset = s.val() || 0; });
+  return {
+    on(p, cb) { const r = db.ref(p); const h = (s) => cb(s.val()); r.on('value', h); return () => r.off('value', h); },
+    set: (p, v) => db.ref(p).set(v),
+    update: (p, v) => db.ref(p).update(v),
+    remove: (p) => db.ref(p).remove(),
+    async tx(p, fn) { const r = await db.ref(p).transaction(fn); return { ok: r.committed, val: r.snapshot.val() }; },
+    aoDesconectar: (p, v) => (v === null ? db.ref(p).onDisconnect().remove() : db.ref(p).onDisconnect().set(v)),
+    cancelarDesconectar: (p) => db.ref(p).onDisconnect().cancel(),
+    novaChave: () => db.ref('partidas').push().key,
+    agora: () => Date.now() + offset,
+  };
+}
+
+/* ===================== RANKING ===================== */
+function ordenarRanking(obj) {
+  return Object.values(obj || {})
+    .filter((r) => r && (r.v || r.e || r.d))
+    .sort((a, b) => (b.v || 0) - (a.v || 0) || (a.d || 0) - (b.d || 0) || (b.e || 0) - (a.e || 0));
+}
+async function pontuar(DB, nome, campo) {
+  await DB.tx('ranking/' + chaveNome(nome), (r) => {
+    r = r || { nome, v: 0, e: 0, d: 0 };
+    r.nome = nome; r[campo] = (r[campo] || 0) + 1;
+    return r;
+  });
+}
+async function registrarResultado(DB, p) {
+  const f = p.fim;
+  if (f.vencedor === 'empate') {
+    await Promise.all([pontuar(DB, p.X.nome, 'e'), pontuar(DB, p.O.nome, 'e')]);
+  } else {
+    await Promise.all([pontuar(DB, p[f.vencedor].nome, 'v'), pontuar(DB, p[outro(f.vencedor)].nome, 'd')]);
+  }
+}
+
+/* ===================== INÍCIO ===================== */
+// Aceita tanto FIREBASE_CONFIG quanto o nome "firebaseConfig" que o Firebase usa
+const CFG = (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG) ||
+            (typeof firebaseConfig !== 'undefined' && firebaseConfig) || null;
+function iniciar() {
+  if (window.PV_DB_FACTORY) return location.hash === '#telao' ? iniciarTelao(criarDB()) : iniciarCelular(criarDB());
+  if (!CFG) {
+    $('app-config').hidden = false;
+    return mostrarErroPV('Configuração do Firebase não encontrada',
+      'O bloco FIREBASE_CONFIG no topo do index.html está com erro ou foi apagado.');
+  }
+  if (!CFG.databaseURL || String(CFG.databaseURL).includes('COLE')) {
+    $('app-config').hidden = false;
+    if (CFG.apiKey && !String(CFG.apiKey).includes('COLE'))
+      mostrarErroPV('Falta o databaseURL na configuração',
+        'Copie o endereço do Realtime Database (ex: https://SEU-PROJETO-default-rtdb.firebaseio.com) e coloque em databaseURL.');
+    return;
+  }
+  if (typeof firebase === 'undefined') {
+    $('app-config').hidden = false;
+    return mostrarErroPV('O Firebase não carregou', 'Verifique a internet e recarregue a página.');
+  }
+  try {
+    location.hash === '#telao' ? iniciarTelao(criarDB()) : iniciarCelular(criarDB());
+  } catch (e) {
+    mostrarErroPV('Erro ao conectar no Firebase', String(e && e.message || e));
+  }
+}
+iniciar();
+
+/* =================================================================
+   CELULAR
+   ================================================================= */
+function iniciarCelular(DB) {
+  $('app-celular').hidden = false;
+  const ESPERA_VALIDADE = 15000; // ms sem sinal = jogador da fila saiu
+  const INATIVO = 40000;         // ms sem jogar = pode pedir W.O.
+  const pid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  let meuNome = '', estado = 'nome';
+  let partidaId = null, meuSimbolo = null, ultimaPartida = null;
+  let pararPartida = null, pararConvite = null, batida = null, vigia = null;
+  let meuRegistro = { v: 0, e: 0, d: 0 };
+  let rankingAtual = {};
+
+  desenharSprite($('logoX'), 'X', true); desenharSprite($('logoO'), 'O', true);
+  desenharSprite($('miniX'), 'X'); desenharSprite($('miniO'), 'O');
+  // Identidade do aparelho: um código guardado no celular prova que o nome é dele.
+  // Assim ninguém cadastra um nome que já existe, e quem volta recupera o seu.
+  let meuToken = null, nomeSalvo = '';
+  try {
+    meuToken = localStorage.getItem('pv-token');
+    if (!meuToken) { meuToken = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('pv-token', meuToken); }
+    nomeSalvo = localStorage.getItem('pv-nome') || '';
+  } catch (e) { meuToken = meuToken || Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+  function telaNome(modo) { // 'volta' = já tem nome salvo, 'novo' = digitar nome
+    const volta = modo === 'volta' && nomeSalvo;
+    $('boxVolta').hidden = !volta; $('boxNovo').hidden = !!volta;
+    $('nomeVolta').textContent = nomeSalvo;
+    $('erro').textContent = ''; $('erroVolta').textContent = '';
+    mostrar('nome');
+  }
+
+  // presença (contador "online" do telão)
+  DB.set('online/' + pid, true); DB.aoDesconectar('online/' + pid, null);
+
+  function mostrar(id) { estado = id; document.querySelectorAll('.tela').forEach((t) => t.classList.toggle('ativa', t.id === 't-' + id)); }
+  function vibrar(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+
+  // ----- tabuleiro -----
+  const casas = [];
+  for (let i = 0; i < 9; i++) {
+    const c = document.createElement('div');
+    c.className = 'casa';
+    c.onclick = () => jogar(i);
+    $('tab').appendChild(c); casas.push(c);
+  }
+  let desenhado = '_________';
+
+  // ----- ranking -----
+  DB.on('ranking', (obj) => {
+    rankingAtual = obj || {};
+    const lista = ordenarRanking(obj).slice(0, 10);
+    const tb = $('rank');
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="3" class="sub">Nenhuma partida ainda</td></tr>'; return; }
+    tb.innerHTML = '';
+    lista.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.className = 'medalha-' + (i + 1) + (meuNome && chaveNome(r.nome) === chaveNome(meuNome) ? ' eu' : '');
+      tr.innerHTML = '<td class="pos">' + (i + 1) + '</td><td></td><td class="n">' + (r.v || 0) + '</td>';
+      tr.children[1].textContent = r.nome;
+      tb.appendChild(tr);
+    });
+  });
+
+  // ----- entrar na fila -----
+  async function procurar() {
+    mostrar('fila');
+    let adversario = null;
+    const r = await DB.tx('espera', (cur) => {
+      adversario = null;
+      if (cur && cur.pid !== pid && DB.agora() - (cur.ts || 0) < ESPERA_VALIDADE) {
+        adversario = cur; return null; // pega quem estava esperando
+      }
+      return { pid, nome: meuNome, ts: DB.agora() };
+    });
+    if (estado !== 'fila') return;
+    if (r.ok && adversario) {
+      // eu formo a partida
+      const id = DB.novaChave();
+      const eu = { pid, nome: meuNome }, ele = { pid: adversario.pid, nome: adversario.nome };
+      const [X, O] = Math.random() < 0.5 ? [eu, ele] : [ele, eu];
+      const agora = DB.agora();
+      await DB.set('partidas/' + id, { X, O, tab: '_________', vez: 'X', criada: agora, ult: agora });
+      await DB.set('convites/' + adversario.pid, id);
+      entrarPartida(id);
+    } else {
+      aguardarConvite();
+    }
+  }
+
+  function aguardarConvite() {
+    pararTudoFila();
+    let semFila = 0;
+    pararConvite = DB.on('convites/' + pid, (id) => {
+      if (!id || estado !== 'fila') return;
+      DB.remove('convites/' + pid);
+      entrarPartida(id);
+    });
+    DB.aoDesconectar('convites/' + pid, null);
+    // "batida de coração" para continuar válido na fila
+    batida = setInterval(async () => {
+      if (estado !== 'fila') return;
+      const r = await DB.tx('espera', (cur) => {
+        if (cur && cur.pid === pid) { cur.ts = DB.agora(); return cur; }
+        return undefined; // não é mais meu: não mexe
+      });
+      if (!r.ok) {
+        semFila++;
+        if (semFila >= 3 && estado === 'fila') { pararTudoFila(); procurar(); } // fui retirado e o convite não veio
+      } else semFila = 0;
+    }, 4000);
+  }
+
+  function pararTudoFila() {
+    if (pararConvite) { pararConvite(); pararConvite = null; }
+    if (batida) { clearInterval(batida); batida = null; }
+  }
+
+  async function sairDaFila() {
+    pararTudoFila();
+    await DB.tx('espera', (cur) => (cur && cur.pid === pid ? null : undefined));
+  }
+
+  // ----- partida -----
+  function entrarPartida(id) {
+    pararTudoFila();
+    partidaId = id; meuSimbolo = null; desenhado = '_________';
+    casas.forEach((c) => { c.innerHTML = ''; c.className = 'casa'; });
+    let comecou = false;
+    pararPartida = DB.on('partidas/' + id, (p) => {
+      if (!p || id !== partidaId) return;
+      ultimaPartida = p;
+      if (!comecou) {
+        comecou = true;
+        meuSimbolo = p.X.pid === pid ? 'X' : 'O';
+        $('nX').textContent = p.X.nome; $('nO').textContent = p.O.nome;
+        $('nX').style.color = meuSimbolo === 'X' ? 'var(--verde)' : '';
+        $('nO').style.color = meuSimbolo === 'O' ? 'var(--verde)' : '';
+        $('aviso').dataset.eu = meuSimbolo;
+        DB.aoDesconectar('partidas/' + id + '/saiu/' + meuSimbolo, true);
+        mostrar('jogo'); vibrar(80);
+      }
+      atualizarPartida(p);
+    });
+    clearInterval(vigia);
+    vigia = setInterval(() => ultimaPartida && estado === 'jogo' && atualizarWO(ultimaPartida), 2000);
+  }
+
+  function atualizarPartida(p) {
+    for (let i = 0; i < 9; i++) {
+      if (p.tab[i] !== desenhado[i]) desenharSprite(casas[i], p.tab[i] === '_' ? null : p.tab[i], true);
+    }
+    const eraMinha = !p.fim && p.vez === meuSimbolo && desenhado !== p.tab;
+    desenhado = p.tab;
+    const minha = !p.fim && p.vez === meuSimbolo;
+    $('jX').classList.toggle('vez', !p.fim && p.vez === 'X');
+    $('jO').classList.toggle('vez', !p.fim && p.vez === 'O');
+    casas.forEach((c, i) => c.classList.toggle('livre', minha && p.tab[i] === '_'));
+    $('aviso').className = 'aviso' + (minha ? ' minha' : '');
+    $('aviso').textContent = p.fim ? '' : minha ? 'SUA VEZ! Você é o ' + meuSimbolo : 'Vez do adversário...';
+    if (eraMinha) vibrar(30);
+    atualizarWO(p);
+
+    // adversário fechou a página -> vitória por W.O.
+    if (!p.fim && p.saiu && p.saiu[outro(meuSimbolo)]) encerrarPorWO();
+    if (p.fim) mostrarFim(p);
+  }
+
+  function atualizarWO(p) {
+    const podeWO = !p.fim && p.vez !== meuSimbolo && DB.agora() - (p.ult || 0) > INATIVO;
+    $('bWO').hidden = !podeWO;
+  }
+
+  async function jogar(i) {
+    const p = ultimaPartida;
+    if (estado !== 'jogo' || !p || p.fim || p.vez !== meuSimbolo || p.tab[i] !== '_') return;
+    let fimMeu = false;
+    const r = await DB.tx('partidas/' + partidaId, (q) => {
+      fimMeu = false;
+      if (!q || q.fim || q.vez !== meuSimbolo || q.tab[i] !== '_') return undefined;
+      q.tab = q.tab.slice(0, i) + meuSimbolo + q.tab.slice(i + 1);
+      q.vez = outro(meuSimbolo);
+      q.ult = DB.agora();
+      const res = verificar(q.tab);
+      if (res) { q.fim = { vencedor: res.vencedor, linha: res.linha, motivo: 'normal', t: DB.agora() }; fimMeu = true; }
+      return q;
+    });
+    if (r.ok && fimMeu) registrarResultado(DB, r.val);
+  }
+
+  let encerrandoWO = false;
+  async function encerrarPorWO() {
+    if (encerrandoWO) return; encerrandoWO = true;
+    let fimMeu = false;
+    const r = await DB.tx('partidas/' + partidaId, (q) => {
+      fimMeu = false;
+      if (!q || q.fim) return undefined;
+      q.fim = { vencedor: meuSimbolo, linha: null, motivo: 'desistencia', t: DB.agora() };
+      fimMeu = true;
+      return q;
+    });
+    if (r.ok && fimMeu) registrarResultado(DB, r.val);
+    encerrandoWO = false;
+  }
+  $('bWO').onclick = encerrarPorWO;
+
+  let fimMostrado = null;
+  function mostrarFim(p) {
+    if (fimMostrado === partidaId) return;
+    fimMostrado = partidaId;
+    const id = partidaId;
+    DB.cancelarDesconectar('partidas/' + id + '/saiu/' + meuSimbolo);
+    clearInterval(vigia);
+    const f = p.fim;
+    if (f.linha) f.linha.forEach((i) => casas[i].classList.add('ganhou'));
+    const ganhei = f.vencedor === meuSimbolo;
+    vibrar(ganhei ? [60, 60, 120] : 200);
+    setTimeout(() => {
+      if (partidaId !== id) return;
+      if (pararPartida) { pararPartida(); pararPartida = null; }
+      $('resultado').textContent = f.vencedor === 'empate' ? 'DEU VELHA!' : ganhei ? 'VOCE VENCEU!' : 'VOCE PERDEU';
+      $('resultado').style.color = f.vencedor === 'empate' ? 'var(--suave)' : ganhei ? 'var(--verde)' : 'var(--x)';
+      $('motivo').textContent = f.motivo === 'desistencia' ? (ganhei ? 'O adversário saiu da partida.' : 'Você foi desconectado.') : '';
+      // estatísticas (o ranking chega alguns instantes depois)
+      const atual = rankingAtual[chaveNome(meuNome)] || { v: 0, e: 0, d: 0 };
+      const campo = f.vencedor === 'empate' ? 'e' : ganhei ? 'v' : 'd';
+      const visto = (atual[campo] || 0) > (meuRegistro[campo] || 0) ? atual : { ...atual, [campo]: (atual[campo] || 0) + 1 };
+      meuRegistro = visto;
+      $('sV').textContent = visto.v || 0; $('sE').textContent = visto.e || 0; $('sD').textContent = visto.d || 0;
+      partidaId = null;
+      mostrar('fim');
+    }, f.motivo === 'desistencia' ? 300 : 1600);
+  }
+
+  // ----- botões -----
+  // Reserva o nome para este aparelho. Retorna 'ok', 'ocupado' ou 'offline'.
+  async function reservarNome(n) {
+    try {
+      const r = await DB.tx('usuarios/' + chaveNome(n), (u) => {
+        if (!u) return { nome: n, token: meuToken, criado: DB.agora() }; // nome livre: é meu
+        if (u.token === meuToken) return u;                               // já era meu: volta
+        return undefined;                                                 // de outra pessoa
+      });
+      return r.ok ? 'ok' : 'ocupado';
+    } catch (e) { return 'offline'; }
+  }
+
+  let entrando = false;
+  async function entrar(n, campoErro) {
+    if (entrando) return;
+    n = n.trim().replace(/[<>]/g, '');
+    if (!n) { $(campoErro).textContent = 'Digite seu nome!'; return; }
+    entrando = true;
+    $(campoErro).textContent = 'Verificando nome...';
+    const res = await reservarNome(n);
+    entrando = false;
+    if (res === 'ocupado') {
+      $(campoErro).textContent = 'O nome "' + n + '" já está em uso. Escolha outro (ex: ' + n.slice(0, 11) + Math.floor(Math.random() * 90 + 10) + ').';
+      if (campoErro === 'erroVolta') { telaNome('novo'); $('erro').textContent = 'Seu nome antigo foi usado por outra pessoa. Escolha um novo.'; }
+      return;
+    }
+    if (res === 'offline') { $(campoErro).textContent = 'Sem conexão com o servidor. Verifique a internet.'; return; }
+    meuNome = nomeSalvo = n;
+    try { localStorage.setItem('pv-nome', n); } catch (e) {}
+    $(campoErro).textContent = '';
+    meuRegistro = rankingAtual[chaveNome(n)] || { v: 0, e: 0, d: 0 };
+    procurar().catch(() => { telaNome('volta'); $('erroVolta').textContent = 'Sem conexão com o servidor. Verifique a internet.'; });
+  }
+  $('bEntrar').onclick = () => entrar($('nome').value, 'erro');
+  $('nome').onkeydown = (e) => { if (e.key === 'Enter') entrar($('nome').value, 'erro'); };
+  $('bVolta').onclick = () => entrar(nomeSalvo, 'erroVolta');
+  $('bOutro').onclick = () => { $('nome').value = ''; telaNome('novo'); $('nome').focus(); };
+  $('bCancelar').onclick = () => { sairDaFila(); telaNome('volta'); };
+  $('bDeNovo').onclick = () => procurar();
+  $('bTrocar').onclick = () => { $('nome').value = ''; telaNome('novo'); };
+  telaNome('volta');
+}
+
+/* =================================================================
+   TELÃO
+   ================================================================= */
+function iniciarTelao(DB) {
+  $('app-telao').hidden = false;
+  document.title = 'Pixel Velha - Telão';
+  const urlJogo = location.href.split('#')[0];
+  $('url').textContent = urlJogo;
+  if (window.QRCode) new QRCode($('qr'), { text: urlJogo, width: 512, height: 512, colorDark: '#1a1033', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+
+  DB.on('online', (o) => { $('cOn').textContent = Object.keys(o || {}).length; });
+
+  // ----- partidas -----
+  const cache = new Map();
+  let partidas = {};
+  DB.on('partidas', (obj) => { partidas = obj || {}; renderPartidas(); });
+  setInterval(renderPartidas, 2000);
+
+  function criarCard(p) {
+    const el = document.createElement('div');
+    el.className = 'caixa partida';
+    el.innerHTML = '<div class="nomes"><span class="nx"></span><span class="no"></span></div><div class="tabuleiro"></div><div class="status"></div>';
+    el.querySelector('.nx').textContent = '✕ ' + p.X.nome;
+    el.querySelector('.no').textContent = p.O.nome + ' ○';
+    const casas = [];
+    for (let i = 0; i < 9; i++) { const c = document.createElement('div'); c.className = 'casa'; el.querySelector('.tabuleiro').appendChild(c); casas.push(c); }
+    return { el, casas, tab: '_________' };
+  }
+
+  function renderPartidas() {
+    const agora = DB.agora();
+    const lista = Object.entries(partidas)
+      .filter(([, p]) => p && p.X && p.O && (!p.fim || agora - (p.fim.t || 0) < 8000) && agora - (p.ult || 0) < 5 * 60000)
+      .sort((a, b) => (b[1].criada || 0) - (a[1].criada || 0))
+      .slice(0, 4);
+    $('cJog').textContent = Object.values(partidas).filter((p) => p && !p.fim && agora - (p.ult || 0) < 5 * 60000).length * 2;
+
+    const box = $('partidas');
+    const ids = new Set(lista.map(([id]) => id));
+    for (const [id, c] of cache) if (!ids.has(id)) { c.el.remove(); cache.delete(id); }
+
+    if (!lista.length) {
+      if (!box.querySelector('.vazio')) {
+        box.innerHTML = '';
+        const v = document.createElement('div');
+        v.className = 'vazio';
+        v.innerHTML = '<div class="tabuleiro"></div>Nenhuma partida agora.<br>Escaneie o QR code<br>e desafie alguém!';
+        ['X', null, 'O', null, 'X', null, 'O', null, 'X'].forEach((s) => {
+          const c = document.createElement('div'); c.className = 'casa'; v.firstChild.appendChild(c); desenharSprite(c, s);
+        });
+        box.appendChild(v);
+      }
+      return;
+    }
+    const vazio = box.querySelector('.vazio'); if (vazio) vazio.remove();
+
+    lista.forEach(([id, p]) => {
+      let c = cache.get(id);
+      if (!c) { c = criarCard(p); cache.set(id, c); }
+      box.appendChild(c.el); // mantém a ordem
+      for (let i = 0; i < 9; i++) {
+        if (p.tab[i] !== c.tab[i]) desenharSprite(c.casas[i], p.tab[i] === '_' ? null : p.tab[i], true);
+      }
+      c.tab = p.tab;
+      const [nx, no] = c.el.querySelectorAll('.nomes span');
+      nx.classList.toggle('vez', !p.fim && p.vez === 'X');
+      no.classList.toggle('vez', !p.fim && p.vez === 'O');
+      const st = c.el.querySelector('.status');
+      if (p.fim) {
+        if (p.fim.linha) p.fim.linha.forEach((i) => c.casas[i].classList.add('ganhou'));
+        st.textContent = p.fim.vencedor === 'empate' ? 'DEU VELHA!'
+          : '★ ' + p[p.fim.vencedor].nome + ' VENCEU' + (p.fim.motivo === 'desistencia' ? ' (W.O.)' : '');
+      } else st.textContent = '';
+    });
+  }
+
+  // limpeza automática de partidas antigas
+  setInterval(() => {
+    const agora = DB.agora();
+    Object.entries(partidas).forEach(([id, p]) => {
+      if (!p || (p.fim && agora - (p.fim.t || 0) > 60000) || agora - (p.ult || 0) > 10 * 60000) DB.remove('partidas/' + id);
+    });
+  }, 20000);
+
+  // ----- ranking -----
+  let anterior = {};
+  DB.on('ranking', (obj) => {
+    const lista = ordenarRanking(obj).slice(0, 10);
+    const tb = $('rankT');
+    tb.innerHTML = '';
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="5" style="color:var(--suave);font-size:.8em;line-height:2;white-space:normal">Ninguém pontuou ainda.<br>Seja o primeiro!</td></tr>'; anterior = {}; return; }
+    const novo = {};
+    lista.forEach((r, i) => {
+      const k = chaveNome(r.nome);
+      const tr = document.createElement('tr');
+      tr.className = 'medalha-' + (i + 1);
+      if (anterior[k] !== undefined && anterior[k] !== r.v) tr.classList.add('linha-nova');
+      novo[k] = r.v;
+      tr.innerHTML = '<td class="pos">' + (i + 1) + '</td><td></td><td class="n">' + (r.v || 0) + '</td><td class="n cinza">' + (r.e || 0) + '</td><td class="n cinza">' + (r.d || 0) + '</td>';
+      tr.children[1].textContent = r.nome;
+      tb.appendChild(tr);
+    });
+    anterior = novo;
+  });
+
+  // ----- zerar ranking (com confirmação na própria tela) -----
+  $('bZerar').onclick = () => { $('bZerar').hidden = true; $('confirmaZerar').hidden = false; };
+  $('bZerarNao').onclick = () => { $('bZerar').hidden = false; $('confirmaZerar').hidden = true; };
+  $('bZerarSim').onclick = () => { DB.remove('ranking'); DB.remove('usuarios'); $('bZerarNao').onclick(); };
+}
+</script>
+</body>
+</html>
